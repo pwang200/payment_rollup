@@ -7,8 +7,6 @@ risc0_zkvm::guest::entry!(main);
 
 fn main() {
     let mut input: EngineInput = env::read();
-    let results = input.account_book.process_payment_txns(input.txns);
-    // let v = tx.verify();
-    // let v = true;
-    env::commit(&results);
+    let header = input.process();
+    env::commit(&header);
 }
