@@ -8,7 +8,7 @@ use ed25519_dalek::VerifyingKey;
 use ed25519_dalek::ed25519::signature::SignerMut;
 
 //monotree = { git = "https://github.com/pwang200/monotree.git" }
-use monotree::{Monotree, verify_proof};
+use monotree::Monotree;
 
 pub const HASH_LEN: usize = 32;
 
@@ -244,6 +244,7 @@ impl AccountBook {
         results
     }
 
+    #[cfg(test)]
     fn hash_verify(&mut self, pk: &VerifyingKey, is_valid: impl Fn(&Account) -> bool) -> bool {
         // has account
         // account info correct
@@ -275,7 +276,7 @@ impl AccountBook {
         }
 
         let proof = self.proof_tree.get_merkle_proof(Some(&self.root), &id).unwrap();
-        verify_proof(Some(&self.root), &leaf, proof.as_ref())
+        monotree::verify_proof(Some(&self.root), &leaf, proof.as_ref())
     }
 }
 
