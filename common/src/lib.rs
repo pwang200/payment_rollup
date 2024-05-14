@@ -1,33 +1,21 @@
-// use k256::{
-//     ecdsa::{VerifyingKey}
-// };
-// use sha3::Keccak256;
-
 use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
 use sha2::{Sha256, Digest};
-//use rand::rngs::StdRng;
 
-// extern crate ed25519_dalek;
-// use ed25519_dalek::Keypair;
 use ed25519_dalek::{SigningKey, Verifier};
 use ed25519_dalek::Signature;
 use ed25519_dalek::VerifyingKey;
 use ed25519_dalek::ed25519::signature::SignerMut;
-// use ed25519_dalek::{PUBLIC_KEY_LENGTH, SECRET_KEY_LENGTH, KEYPAIR_LENGTH, SIGNATURE_LENGTH};
 
-// use bincode::{serialize};
-use monotree::{Monotree, verify_proof};
 //monotree = { git = "https://github.com/pwang200/monotree.git" }
-// use monotree::Monotree;
+use monotree::{Monotree, verify_proof};
+
 pub const HASH_LEN: usize = 32;
 
 pub type Hash = [u8; HASH_LEN];
 pub type AccountID = Hash;
 pub type PaymentTxns = Vec<PaymentTx>;
 
-// pub type PKBytes = [u8; PUBLIC_KEY_LENGTH];
-// pub type SigBytes = [u8; SIGNATURE_LENGTH];
 
 pub fn pk_to_hash(pk: &VerifyingKey) -> Hash {
     let mut hasher = Sha256::new();
@@ -52,7 +40,6 @@ impl PaymentTxPayLoad {
         hasher.update(self.to.as_bytes());
         hasher.update(self.amount.to_be_bytes());
         hasher.update(self.sqn.to_be_bytes());
-        //let result = hasher.finalize();
         let x: Hash = hasher.finalize().as_slice().try_into().expect("hash");
         x
     }
@@ -105,7 +92,7 @@ pub struct TransactionSet {
 
 impl TransactionSet {
     pub fn new() -> TransactionSet {//parent: Hash, sqn: u32
-        TransactionSet {txns: vec![]}
+        TransactionSet { txns: vec![] }
     }
 
     pub fn add_tx(&mut self, tx: PaymentTx) {
@@ -116,7 +103,7 @@ impl TransactionSet {
         let mut hasher = Sha256::new();
         // hasher.update(self.parent);
         // hasher.update(self.sqn.to_be_bytes());
-        for tx in & self.txns{
+        for tx in &self.txns {
             hasher.update(tx.hash());
         }
         let x: Hash = hasher.finalize().as_slice().try_into().expect("hash");
@@ -187,7 +174,7 @@ impl AccountBook {
         AccountBook { proof_tree: tree, root: r, accounts: b }
     }
 
-    pub fn get_account(&self, a: &AccountID) -> Option<&Account>{
+    pub fn get_account(&self, a: &AccountID) -> Option<&Account> {
         self.accounts.get(a)
     }
 
@@ -232,7 +219,7 @@ impl AccountBook {
         }
     }
 
-    pub fn process_payment_txns(&mut self, payments: &TransactionSet) -> Vec<bool> {
+    pub fn process_payment_txns(&mut self, payments: &TransactionSet) -> Vec<u8> {
         let mut to_update = std::collections::HashMap::new();
         let mut results = Vec::new();
         for payment in &payments.txns {
@@ -240,10 +227,10 @@ impl AccountBook {
                 Ok(v) => {
                     to_update.insert(v.0.0, v.0.1);
                     to_update.insert(v.1.0, v.1.1);
-                    results.push(true);
+                    results.push(1);
                 }
                 Err(_) => {
-                    results.push(false);
+                    results.push(0);
                 }
             }
         }
@@ -257,29 +244,24 @@ impl AccountBook {
         results
     }
 
-    fn hash_verify(&mut self, id: &AccountID, is_valid : impl Fn(&Account) -> bool) -> bool {
+    fn hash_verify(&mut self, pk: &VerifyingKey, is_valid: impl Fn(&Account) -> bool) -> bool {
         // has account
         // account info correct
         // computed account hash is the same as Merkle tree leaf
         // can get proof
         // proof verifies
-        let account = self.accounts.get(id);
-        if account.is_none(){
+        let id = pk_to_hash(pk);
+        let account = self.accounts.get(&id);
+        if account.is_none() {
             return false;
         }
         let account = account.unwrap();
         if !is_valid(account) {
             return false;
         }
-        // let account_hash = self.accounts.get(id).map(|x| if is_valid(x) {x.hash()} else { None });
-        // if account_hash.is_none() {
-        //     return false;
-        // }
         let account_hash = account.hash();
 
-        // let leaf = self.proof_tree.get(Some(&self.root),&id).map(|x| if x.is_some() {x.unwrap()} else { Err("") });
-        let leaf = self.proof_tree.get(Some(&self.root),&id);
-        //.map(|x| if x.is_some() {x.unwrap()} else { Err("") });
+        let leaf = self.proof_tree.get(Some(&self.root), &id);
         if leaf.is_err() {
             return false;
         }
@@ -292,10 +274,8 @@ impl AccountBook {
             return false;
         }
 
-        let proof = self.proof_tree.get_merkle_proof(Some(&self.root), id).unwrap();
-        //let hasher = SimpleHash::new();
+        let proof = self.proof_tree.get_merkle_proof(Some(&self.root), &id).unwrap();
         verify_proof(Some(&self.root), &leaf, proof.as_ref())
-        // true
     }
 }
 
@@ -303,13 +283,29 @@ impl AccountBook {
 pub struct BlockHeader {
     parent: Hash,
     state_root: Hash,
-    txns_hash: Hash,
     sqn: u32,
-    ex_results: Vec<bool>, //TODO
+    txns_hash: Hash,
+    ex_results: Vec<u8>, //TODO
 }
+
+impl BlockHeader {
+    pub fn hash(&self) -> Hash {
+        let mut hasher = Sha256::new();
+        hasher.update(self.parent);
+        hasher.update(self.state_root);
+        hasher.update(self.sqn.to_be_bytes());
+        hasher.update(self.txns_hash);
+        hasher.update(self.ex_results.as_slice());
+        let x: Hash = hasher.finalize().as_slice().try_into().expect("hash");
+        x
+    }
+}
+
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct EngineInput {
+    pub parent: Hash,
+    //TODO
     pub account_book: AccountBook,
     pub txns: TransactionSet,
     pub sqn: u32,
@@ -317,17 +313,16 @@ pub struct EngineInput {
 
 impl EngineInput {
     pub fn process(&mut self) -> BlockHeader {
-        let parent = self.account_book.root;
-        let txns_hash= self.txns.hash();
-        //let new_root
+        let txns_hash = self.txns.hash();
         let results = self.account_book.process_payment_txns(&self.txns);
 
-        BlockHeader{parent: parent, state_root: self.account_book.root, txns_hash: txns_hash, sqn: self.sqn, ex_results: results}
+        BlockHeader { parent: self.parent, state_root: self.account_book.root, txns_hash: txns_hash, sqn: self.sqn, ex_results: results }
     }
 
-    pub fn new_txns_set(&mut self, payments: TransactionSet){
+    pub fn new_block(&mut self, parent: Hash, txns: TransactionSet) {
+        self.parent = parent;
+        self.txns = txns;
         self.sqn += 1;
-        self.txns = payments;
     }
 }
 
@@ -337,6 +332,8 @@ mod tests {
     use super::*;
     use rand::rngs::OsRng;
 
+    // run the test with the following command, note the manifest-path is relative
+    // RUST_BACKTRACE=1 cargo test --lib tests::block_process_works --manifest-path ./common/Cargo.toml
     #[test]
     fn block_process_works() {
         let n = 33usize;
@@ -349,7 +346,7 @@ mod tests {
 
         /////////////////////////////////////////////////////
         // create txns
-        let mut txns = TransactionSet::new();//book.root, 1u32);
+        let mut txns = TransactionSet::new();
         let mut alices = Vec::new();
         for i in 0..n {
             let alice_signing_key: SigningKey = SigningKey::generate(&mut csprng);
@@ -359,29 +356,19 @@ mod tests {
         }
         assert_eq!(alices.len(), n);
         // process txns in one block
-        let mut input = EngineInput{account_book:book, txns:txns, sqn: 0};
+        let mut input = EngineInput { parent: Hash::default(), account_book: book, txns: txns, sqn: 0 };
         let header = input.process();
         assert_eq!(header.ex_results.len(), n);
         assert_eq!(header.sqn, 0);
-        for r in header.ex_results{
-            assert!(r);
+        for r in &header.ex_results {
+            assert_eq!(*r, 1u8);
         }
         // n accounts are created
         for (_, pk) in &alices {
-            let id = pk_to_hash(pk);
-            let a = input.account_book.get_account(&id).unwrap();
-            assert_eq!(a.sqn_expect, 0);
-            assert_eq!(a.amount, payment_amount);
-            assert_eq!(a.owner, *pk);
+            assert!(input.account_book.hash_verify(pk, |a| a.sqn_expect == 0 && a.amount == payment_amount && a.owner == *pk));
         }
         // genesis account
-        {
-            let id = pk_to_hash(&faucet_verifying_key);
-            let a = input.account_book.get_account(&id).unwrap();
-            assert_eq!(a.sqn_expect, n as u32);
-            assert_eq!(a.amount, genesis_amount - payment_amount * n as u128);
-            assert_eq!(a.owner, faucet_verifying_key);
-        }
+        assert!(input.account_book.hash_verify(&faucet_verifying_key, |a| a.sqn_expect == n as u32 && a.amount == genesis_amount - payment_amount * n as u128 && a.owner == faucet_verifying_key));
 
         /////////////////////////////////////////////////////
         // more txns
@@ -389,31 +376,19 @@ mod tests {
         for (sk, pk) in &mut alices {
             txns.add_tx(PaymentTx::new(pk.clone(), faucet_verifying_key, payment_amount, 0u32, sk));
         }
-        input.new_txns_set(txns);
-        let header = input.process();
-        assert_eq!(header.ex_results.len(), n);
-        assert_eq!(header.sqn, 1);
-        for r in header.ex_results{
-            assert!(r);
+        input.new_block(header.hash(), txns);
+        let header_new = input.process();
+        assert_eq!(header_new.ex_results.len(), n);
+        assert_eq!(header_new.sqn, 1);
+        for r in header_new.ex_results {
+            assert_eq!(r, 1);
         }
+        assert_eq!(header_new.parent, header.hash());
         // n accounts
         for (_, pk) in &alices {
-            let id = pk_to_hash(pk);
-            // let a = input.account_book.get_account(&id).unwrap();
-            // assert_eq!(a.sqn_expect, 1);
-            // assert_eq!(a.amount, 0);
-            // assert_eq!(a.owner, *pk);
-            assert!(input.account_book.hash_verify(&id, |a | a.sqn_expect == 1 && a.amount == 0 && a.owner == *pk));
+            assert!(input.account_book.hash_verify(pk, |a| a.sqn_expect == 1 && a.amount == 0 && a.owner == *pk));
         }
         // genesis account
-        {
-            let id = pk_to_hash(&faucet_verifying_key);
-            assert!(input.account_book.hash_verify(&id, |a | a.sqn_expect == n as u32 && a.amount == genesis_amount && a.owner == faucet_verifying_key));
-            // let a = input.account_book.get_account(&id).unwrap();
-            // assert_eq!(a.sqn_expect, n as u32);
-            // assert_eq!(a.amount, genesis_amount);
-            // assert_eq!(a.owner, faucet_verifying_key);
-        }
-        println!("ha ha");
+        assert!(input.account_book.hash_verify(&faucet_verifying_key, |a| a.sqn_expect == n as u32 && a.amount == genesis_amount && a.owner == faucet_verifying_key));
     }
 }
