@@ -6,12 +6,16 @@ use methods::{
 use risc0_zkvm::{default_prover, ExecutorEnv};
 use rand::rngs::OsRng;
 use ed25519_dalek::SigningKey;
-//use ed25519_dalek::Signature;
 use ed25519_dalek::{VerifyingKey};
 use common::{Hash, AccountBook, EngineInput, PaymentTx, TransactionSet, BlockHeader};
 
+// prove is slow, use dev mode for testing:
+// RISC0_DEV_MODE=true cargo run --color=always --bin host --manifest-path ./host/Cargo.toml
 fn main() {
-    let num_txns = 1u32;
+    // 1 tx:  3m18.492s, with 24 core CPU
+    // 5 tx: 15m31.657s
+    let num_txns = 5u32;
+
     // Initialize tracing. In order to view logs, run `RUST_LOG=info cargo run`
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::filter::EnvFilter::from_default_env())
@@ -57,7 +61,9 @@ fn main() {
     // only for testing:
     // process input in host, and compare the resulting block header with the guest output header
     let header_host = input.process();
-
     println!("header_host : {:?}", header_host);
     println!("header_guest: {:?}", header_guest);
+    println!("header_host hash : {:?}", header_host.hash());
+    println!("header_guest hash: {:?}", header_guest.hash());
+    println!("same header hash: {}", header_guest.hash() == header_host.hash());
 }
