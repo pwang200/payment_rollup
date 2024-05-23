@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = [ "client", "common","host", "methods"]
+members = [ "common", "host", "methods"]
 #opt-level = 3
 
 [profile.release]

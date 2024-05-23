@@ -7,6 +7,8 @@
       <sourceFolder url="file://$MODULE_DIR$/host/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/methods/guest/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/methods/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/l1_node/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/l2_node/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/methods/guest/target" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
