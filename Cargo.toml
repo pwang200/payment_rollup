@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 members = [ "common", "host", "methods"]
-#opt-level = 3
+opt-level = 3
 
 [profile.release]
 debug = 1

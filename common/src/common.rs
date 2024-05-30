@@ -621,6 +621,7 @@ impl BlockHeaderL2 {
     }
 }
 
+#[derive(Clone)]
 pub struct TxSigner {
     pub sk: SigningKey,
     pub pk: VerifyingKey,

@@ -1,5 +1,5 @@
 use tokio::sync::mpsc::{Sender, Receiver};
-use ed25519_dalek::{SigningKey, VerifyingKey};
+use ed25519_dalek::VerifyingKey;
 use tokio::time::{sleep, Duration, Instant};
 use common::common::*;
 
@@ -9,8 +9,7 @@ use methods::{
 use risc0_zkvm::{default_prover, ExecutorEnv};
 
 pub struct L2Node {
-    rollup_sk: SigningKey,
-    rollup_pk: VerifyingKey,
+    rollup: TxSigner,
     rollup_sqn: u32,
 
     from_client: Receiver<Transaction>,
@@ -23,8 +22,7 @@ pub struct L2Node {
 
 impl L2Node {
     pub fn spawn(
-        rollup_sk: SigningKey,
-        rollup_pk: VerifyingKey,
+        rollup: TxSigner,
         faucet_pk: VerifyingKey,
         from_client: Receiver<Transaction>,
         from_l1: Receiver<Transaction>,
@@ -33,8 +31,7 @@ impl L2Node {
     {
         tokio::spawn(async move {
             Self {
-                rollup_sk,
-                rollup_pk,
+                rollup,
                 rollup_sqn: 0u32,
 
                 from_client,
@@ -71,6 +68,10 @@ impl L2Node {
                     let now = clock();
                     println!("L2Node time {}, num txns {}", now/1000, self.tx_pool.len());
                     timer.as_mut().reset(Instant::now() + Duration::from_millis(ONE_SECOND*4));
+                    if self.tx_pool.is_empty(){
+                        continue;
+                    }
+
                     self.engine_data.txns.append(&mut self.tx_pool);
 
                     let receipt = {
@@ -87,8 +88,9 @@ impl L2Node {
                     };
 
                     let data: Vec<u8> = bincode::serialize(&receipt).unwrap();
-                    let tx = Tx::new(self.rollup_pk.clone(), self.rollup_sqn,
-                        RollupStateUpdate {proof_receipt: data}, &mut self.rollup_sk);
+                    let tx = Tx::new(self.rollup.pk.clone(), self.rollup_sqn,
+                        RollupStateUpdate {proof_receipt: data}, &mut self.rollup.sk);
+                    self.rollup.sqn += 1;
                     self.to_l1.send(Transaction::RollupUpdate(tx)).await.expect("L2Node err sent l1");
 
                     let header: BlockHeaderL2 = receipt.journal.decode().unwrap();

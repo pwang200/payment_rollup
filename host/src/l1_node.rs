@@ -54,6 +54,10 @@ impl L1Node {
                     let now = clock();
                     println!("L1Node time {}, num txns {}", now/1000, self.tx_pool.len());
                     timer.as_mut().reset(Instant::now() + Duration::from_millis(ONE_SECOND*4));
+                    if self.tx_pool.is_empty() {
+                        continue;
+                    }
+
                     self.engine_data.txns.append(&mut self.tx_pool);
                     match common::l1_engine::process(&mut self.engine_data, |data|
                     {

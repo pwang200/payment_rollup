@@ -3,6 +3,7 @@ use tokio::sync::mpsc::channel;
 
 use rand::rngs::OsRng;
 use ed25519_dalek::SigningKey;
+use common::common::TxSigner;
 use crate::client::Client;
 use crate::l1_node::L1Node;
 use crate::l2_node::L2Node;
@@ -22,18 +23,15 @@ async fn main()
     let (tx_l2_l1, rx_l2_l1) = channel(CHANNEL_CAPACITY);
 
     let mut csprng = OsRng;
-    let faucet_sk = SigningKey::generate(&mut csprng);
-    let faucet_vk = faucet_sk.verifying_key();
-    let rollup_sk = SigningKey::generate(&mut csprng);
-    let rollup_vk = rollup_sk.verifying_key();
-
-    // println!("{:?}", faucet_sk);
-    // println!("{:?}", rollup_sk);
+    let faucet = TxSigner::new(SigningKey::generate(&mut csprng));
+    let rollup = TxSigner::new(SigningKey::generate(&mut csprng));
 
     //rollup account setup
-    L1Node::spawn(faucet_vk.clone(), rx_client_l1, rx_l2_l1, tx_l1_l2);
-    L2Node::spawn(rollup_sk, rollup_vk.clone(), faucet_vk.clone(), rx_client_l2, rx_l1_l2, tx_l2_l1);
-    Client::spawn(faucet_sk, faucet_vk, rollup_vk, tx_client_l1, tx_client_l2);
+    let f_pk = faucet.pk.clone();
+    let r_pk = rollup.pk.clone();
+    L1Node::spawn(f_pk.clone(), rx_client_l1, rx_l2_l1, tx_l1_l2);
+    L2Node::spawn(rollup, f_pk, rx_client_l2, rx_l1_l2, tx_l2_l1);
+    Client::spawn(faucet, r_pk, tx_client_l1, tx_client_l2);
     println!("spawned");
     // sleep(Duration::from_millis(1000_000_000)).await;
     match signal::ctrl_c().await {
