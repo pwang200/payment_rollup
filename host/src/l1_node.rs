@@ -47,7 +47,8 @@ impl L1Node {
                     self.tx_pool.push(tx);
                 },
                 Some(tx) = self.from_l2.recv() =>{
-                    println!("L1Node, from l2, tx {:?}", tx);
+                    //println!("L1Node, from l2, tx {:?}", tx);
+                    println!("L1Node, from l2");
                     self.tx_pool.push(tx);
                 },
                 () = &mut timer => {
