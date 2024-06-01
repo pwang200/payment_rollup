@@ -22,16 +22,16 @@ impl Prover {
     ) {
         tokio::spawn(async move {
             Self {
-                engine_data: EngineData::new(faucet_pk, 0),
+                engine_data: EngineData::new(faucet_pk.clone(), 0),
                 from_node,
                 to_node,
             }
-                .run()
-                .await
+                .run(faucet_pk)
+                .await;
         });
     }
 
-    async fn run(&mut self) {
+    async fn run(&mut self, faucet_pk: VerifyingKey) {
         loop {
             tokio::select! {
                 Some(mut txns) = self.from_node.recv() =>{
@@ -75,6 +75,7 @@ impl Prover {
                         // let prover_header : BlockHeaderL2 = receipt.clone().unwrap().journal.decode().unwrap();
                         // println!("Prover, prove header: {:?}", prover_header);
                         // println!("Prover, prove header hash: {:?}", prover_header.hash());
+                        println!("Prover faucet account {:?}", self.engine_data.account_book.get_account(&pk_to_hash(&faucet_pk)));
                     }
 
                     let receipt : ResultT<Receipt> = receipt.map_err(|_|"prover");
@@ -124,7 +125,7 @@ impl L2Node {
                 from_prover,
             }
                 .run()
-                .await
+                .await;
         });
     }
 

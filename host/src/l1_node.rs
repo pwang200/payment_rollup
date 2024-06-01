@@ -18,6 +18,7 @@ pub struct L1Node {
 impl L1Node {
     pub fn spawn(
         faucet_pk: VerifyingKey,
+        rollup_pk: VerifyingKey,
         from_client: Receiver<Transaction>,
         from_l2: Receiver<Transaction>,
         to_l2: Sender<Transaction>,
@@ -28,16 +29,16 @@ impl L1Node {
                 from_client,
                 from_l2,
                 to_l2,
-                engine_data: EngineData::new(faucet_pk, GENESIS_AMOUNT),
+                engine_data: EngineData::new(faucet_pk.clone(), GENESIS_AMOUNT),
                 tx_pool: vec![],
             }
-                .run()
-                .await
+                .run(faucet_pk, rollup_pk)
+                .await;
         });
     }
 
-    async fn run(&mut self){
-        let timer = sleep(Duration::from_millis(ONE_SECOND*4));
+    async fn run(&mut self, faucet_pk: VerifyingKey, rollup_pk: VerifyingKey) {
+        let timer = sleep(Duration::from_millis(ONE_SECOND * 4));
         tokio::pin!(timer);
 
         loop {
@@ -79,6 +80,11 @@ impl L1Node {
                                         break;
                                     }
                                 }
+                            }
+                            {
+                                // debug only
+                                println!("L1Node faucet account {:?}", self.engine_data.account_book.get_account(&pk_to_hash(&faucet_pk)));
+                                println!("L1Node rollup account {:?}", self.engine_data.account_book.get_account(&pk_to_hash(&rollup_pk)));
                             }
                         }
                         Err(e) => {

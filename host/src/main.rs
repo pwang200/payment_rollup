@@ -29,7 +29,7 @@ async fn main()
     //rollup account setup
     let f_pk = faucet.pk.clone();
     let r_pk = rollup.pk.clone();
-    L1Node::spawn(f_pk.clone(), rx_client_l1, rx_l2_l1, tx_l1_l2);
+    L1Node::spawn(f_pk.clone(), r_pk.clone(), rx_client_l1, rx_l2_l1, tx_l1_l2);
     L2Node::spawn(rollup, f_pk, rx_client_l2, rx_l1_l2, tx_l2_l1);
     Client::spawn(faucet, r_pk, tx_client_l1, tx_client_l2);
     println!("spawned");
