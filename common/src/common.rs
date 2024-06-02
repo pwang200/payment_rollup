@@ -564,7 +564,7 @@ impl EngineData {
         }
     }
 
-    pub fn update(&mut self, parent: Hash){
+    pub fn update(&mut self, parent: Hash) {
         self.txns.clear();
         self.sqn += 1;
         self.parent = parent;

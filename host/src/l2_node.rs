@@ -9,9 +9,9 @@ use methods::{
 use risc0_zkvm::{default_prover, ExecutorEnv, Receipt};
 
 struct Prover {
-    engine_data: EngineData,
-    from_node: Receiver<Vec<Transaction>>,
-    to_node: Sender<ResultT<Receipt>>,
+    // engine_data: EngineData,
+    // from_node: Receiver<Vec<Transaction>>,
+    // to_node: Sender<ResultT<Receipt>>,
 }
 
 impl Prover {
@@ -22,64 +22,71 @@ impl Prover {
     ) {
         tokio::spawn(async move {
             Self {
-                engine_data: EngineData::new(faucet_pk.clone(), 0),
-                from_node,
-                to_node,
+                // engine_data: EngineData::new(faucet_pk.clone(), 0),
+                // from_node,
+                // to_node,
             }
-                .run(faucet_pk)
+                .run(faucet_pk, from_node, to_node)
                 .await;
         });
     }
 
-    async fn run(&mut self, faucet_pk: VerifyingKey) {
+    async fn run(&mut self, faucet_pk: VerifyingKey,
+                 mut from_node: Receiver<Vec<Transaction>>,
+                 to_node: Sender<ResultT<Receipt>>, )
+    {
+        let mut engine_data = EngineData::new(faucet_pk.clone(), 0);
         loop {
             tokio::select! {
-                Some(mut txns) = self.from_node.recv() =>{
+                Some(mut txns) = from_node.recv() =>{
                     let time_start = clock();
                     println!("Prover, from node, time {}, {} txns", time_start/1000, txns.len());
 
-                    self.engine_data.txns.append(&mut txns);
+                    engine_data.txns.append(&mut txns);
                     {
                         // debug only
-                        println!("Prover, before prove: {:?}", self.engine_data);
+                        //println!("Prover, before prove: {:?}", engine_data);
                     }
-                    let receipt = {
+                    //let data_in = self.engine_data;
+                    let (receipt, out_data) = tokio::task::spawn_blocking(|| {
+                        // This is running on a thread where blocking {
                         let env = ExecutorEnv::builder()
-                        .write(&self.engine_data)
+                        .write(&engine_data)
                         .unwrap()
                         .build()
                         .unwrap();
 
                         let prover = default_prover();
-                        prover.prove(env, PAYMENT_L2_ELF)
+                        (prover.prove(env, PAYMENT_L2_ELF), engine_data)
                         // .unwrap()
-                    };
+                    }).await.expect("blocking prover");
+                    engine_data = out_data;
                     let time = clock() - time_start;
                     println!("Prover, prove time {}", time/1000);
                      {
                         // debug only
-                        println!("Prover, after prove: {:?}", self.engine_data);
+                        //println!("Prover, after prove: {:?}", engine_data);
                      }
 
                     // run the execution too, since prover won't update self.engine_data
                     let time_start = clock();
-                    let _header = common::l2_engine::process(&mut self.engine_data).expect("native run");
+                    let _header = common::l2_engine::process(&mut  engine_data).expect("native run");
                     let time = clock() - time_start;
                     println!("Prover, native execute time {}/1000 seconds", time);
 
                     {
                         // debug only
-                        println!("Prover, after execute: {:?}", self.engine_data);
+                        //println!("Prover, after execute: {:?}",  engine_data);
                         println!("Prover, execute header: {:?}", _header);
                         println!("Prover, execute header hash: {:?}", _header.hash());
                         // let prover_header : BlockHeaderL2 = receipt.clone().unwrap().journal.decode().unwrap();
                         // println!("Prover, prove header: {:?}", prover_header);
                         // println!("Prover, prove header hash: {:?}", prover_header.hash());
-                        println!("Prover faucet account {:?}", self.engine_data.account_book.get_account(&pk_to_hash(&faucet_pk)));
+                        println!("Prover faucet account {:?}",  engine_data.account_book.get_account(&pk_to_hash(&faucet_pk)));
                     }
 
                     let receipt : ResultT<Receipt> = receipt.map_err(|_|"prover");
-                    self.to_node.send(receipt).await.expect("Prover err sent to node");
+                    to_node.send(receipt).await.expect("Prover err sent to node");
                     println!("Prover, sent proof to node");
                 }
             }
@@ -148,7 +155,10 @@ impl L2Node {
                     self.tx_pool.push(tx);
                 },
                 Some(receipt) = self.from_prover.recv() => {
-                    //println!("L2Node, from prover, receipt {:?}", receipt);
+                    {
+                        // debug only
+                        // println!("L2Node, from prover, receipt {:?}", receipt);
+                    }
                     self.prover_busy = false;
                     let receipt = receipt.expect("prover error");
                     let data: Vec<u8> = bincode::serialize(&receipt).unwrap();

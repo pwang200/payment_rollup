@@ -46,7 +46,6 @@ async fn main()
 }
 
 
-
 // prove is slow, use dev mode for testing:
 // RISC0_DEV_MODE=true cargo run --color=always --bin host --manifest-path ./host/Cargo.toml
 // fn main() {

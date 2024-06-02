@@ -4,6 +4,7 @@ mod tests {
     use ed25519_dalek::{SigningKey};
     use std::collections::HashMap;
     use rand::rngs::OsRng;
+
     const PAY_AMOUNT: u128 = 10u128;
 
     struct Genesis {
@@ -141,6 +142,5 @@ mod tests {
         assert!(bh1.is_ok());
         assert!(genesis.l1.account_book.hash_verify(&genesis.rollup.pk, |a| a.sqn_expect == 2u32 && a.amount == 0 && a.owner == genesis.rollup.pk &&
             a.rollup.as_ref().is_some_and(|ru| ru.header_hash == bh2.hash() && ru.inbox.is_empty() && ru.sqn == 2)));
-
     }
 }
