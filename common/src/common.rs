@@ -143,15 +143,10 @@ impl TxPayload for L2ToL1Withdrawal {
     }
 }
 
-//
-// pub trait L2EngineOutput {
-//     fn get_header(&self) -> BlockHeaderL2;
-//
-// }
 #[derive(Serialize, Deserialize, Debug, Clone)]
 // cross chain message, not signed since there is no dedicated relyer
-pub struct RollupStateUpdate {//<T : L2EngineOutput> {
-    pub proof_receipt: Vec<u8>,//risc0_zkvm::Receipt,
+pub struct RollupStateUpdate {
+    pub proof_receipt: Vec<u8>,
 }
 
 impl TxPayload for RollupStateUpdate {
@@ -169,10 +164,6 @@ pub struct RollupState {
 }
 
 impl RollupState {
-    // pub fn new() -> RollupState {
-    //     RollupState { inbox: VecDeque::new(), rollup_state_hash: Hash::default(), sqn: 0 }
-    // }
-
     fn hash(&self, hasher: &mut DefaultHasher) {
         for msg in &self.inbox {
             hasher.update(msg);
@@ -478,8 +469,36 @@ impl AccountBook {
         self.root = self.proof_tree.inserts(Some(&self.root), &ids, &vs).unwrap().unwrap();
     }
 
+    pub fn verify_root(&mut self) -> bool {
+        let mut ids = Vec::new();
+        let mut vs = Vec::new();
+        for (k, v) in &self.accounts {
+            ids.push(k.clone());
+            vs.push(v.hash());
+        }
+        // let r0 = {
+        //     let mut tree = Monotree::default();
+        //     let root = None;
+        //     tree.inserts(root.as_ref(), ids.as_slice(), vs.as_slice()).unwrap().unwrap()
+        // };
+        //
+        // let r1 = {
+        //     let mut tree = Monotree::default();
+        //     let root = None;
+        //     tree.inserts(root.as_ref(), ids.as_slice(), vs.as_slice()).unwrap().unwrap()
+        // };
+
+        let r2 = {
+            self.proof_tree.inserts(Some(&self.root), &ids, &vs).unwrap().unwrap()
+        };
+
+        // println!("{:?}\n{:?}\n{:?}\n{:?}", r0, r1, r2, self.root);
+        // true
+        r2 == self.root
+    }
+
     #[cfg(test)]
-    pub(crate) fn hash_verify(&mut self, pk: &VerifyingKey, is_valid: impl Fn(&Account) -> bool) -> bool {
+    pub(crate) fn account_hash_verify(&mut self, pk: &VerifyingKey, is_valid: impl Fn(&Account) -> bool) -> bool {
         // has account
         // account info correct
         // computed account hash is the same as Merkle tree leaf
@@ -634,67 +653,3 @@ impl TxSigner {
         TxSigner { sk, pk, sqn: 0 }
     }
 }
-
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-//     use rand::rngs::OsRng;
-//
-//     // run the test with the following command, note the manifest-path is relative
-//     // RUST_BACKTRACE=1 cargo test --lib tests::process_works --manifest-path ./common/Cargo.toml
-//     #[test]
-//     fn process_works() {
-//         let n = 33u32;
-//         let genesis_amount = 1000000u128;
-//         let payment_amount = 10u128;
-//         let mut csprng = OsRng;
-//         let mut faucet_signing_key: SigningKey = SigningKey::generate(&mut csprng);
-//         let faucet_verifying_key: VerifyingKey = faucet_signing_key.verifying_key();
-//         let mut book = AccountBook::new(faucet_verifying_key, genesis_amount);
-//         // no txns, only genesis
-//         assert!(book.hash_verify(&faucet_verifying_key, |a| a.sqn_expect == 0 as u32 && a.amount == genesis_amount && a.owner == faucet_verifying_key));
-//         /////////////////////////////////////////////////////
-//         // create txns
-//         let mut to_update = HashMap::new();
-//         let mut alices = Vec::new();
-//         for i in 0..n {
-//             let alice_signing_key: SigningKey = SigningKey::generate(&mut csprng);
-//             let alice_verifying_key: VerifyingKey = alice_signing_key.verifying_key();
-//             alices.push((alice_signing_key, alice_verifying_key.clone()));
-//             let tx = Tx::new(faucet_verifying_key.clone(), i, Payment { to: alice_verifying_key, amount: payment_amount }, &mut faucet_signing_key);
-//             let r = book.process_payment(&tx).unwrap();
-//             for (k, v) in r {
-//                 to_update.insert(k, v);
-//             }
-//         }
-//         book.update_tree(to_update);
-//
-//         assert_eq!(alices.len(), n as usize);
-//         // n accounts are created
-//         for (_, pk) in &alices {
-//             assert!(book.hash_verify(pk, |a| a.sqn_expect == 0 && a.amount == payment_amount && a.owner == *pk));
-//         }
-//         // genesis account
-//         assert!(book.hash_verify(&faucet_verifying_key, |a| a.sqn_expect == n as u32 && a.amount == genesis_amount - payment_amount * n as u128 && a.owner == faucet_verifying_key));
-//
-//         /////////////////////////////////////////////////////
-//         // more txns
-//         let mut to_update = HashMap::new();
-//         for (sk, pk) in &mut alices {
-//             let tx = Tx::new(pk.clone(), 0u32, Payment { to: faucet_verifying_key, amount: payment_amount }, sk);
-//             let r = book.process_payment(&tx).unwrap();
-//             for (k, v) in r {
-//                 to_update.insert(k, v);
-//             }
-//         }
-//         book.update_tree(to_update);
-//         // n accounts
-//         for (_, pk) in &alices {
-//             assert!(book.hash_verify(pk, |a| a.sqn_expect == 1 && a.amount == 0 && a.owner == *pk));
-//         }
-//         // genesis account
-//         assert!(book.hash_verify(&faucet_verifying_key, |a| a.sqn_expect == n as u32 && a.amount == genesis_amount && a.owner == faucet_verifying_key));
-//     }
-// }
-
-

@@ -8,6 +8,7 @@ risc0_zkvm::guest::entry!(main);
 
 fn main() {
     let mut input: EngineData = env::read();
+    assert!(input.account_book.verify_root());
     let output = common::l2_engine::process(&mut input).unwrap();
     env::commit(&output);
 }

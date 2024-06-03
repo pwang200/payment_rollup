@@ -45,13 +45,3 @@ pub fn process(input: &mut EngineData,
     Ok(header)
 }
 
-// |data|
-// {
-// let receipt: Receipt = bincode::deserialize(data).unwrap();
-// if receipt.verify(PAYMENT_L2_ID).is_ok() {
-// let header: BlockHeaderL2 = receipt.journal.decode().unwrap();
-// Ok(header)
-// } else {
-// Err("receipt decode")
-// }
-// }

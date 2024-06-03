@@ -39,7 +39,7 @@ mod tests {
         let book = &mut genesis.l1.account_book;
         let faucet_pk = &genesis.faucet.pk;
         // no txns, only genesis
-        assert!(book.hash_verify(faucet_pk, |a| a.sqn_expect == 0u32 && a.amount == GENESIS_AMOUNT && a.owner == *faucet_pk));
+        assert!(book.account_hash_verify(faucet_pk, |a| a.sqn_expect == 0u32 && a.amount == GENESIS_AMOUNT && a.owner == *faucet_pk));
         /////////////////////////////////////////////////////
         // create txns
         let mut to_update = HashMap::new();
@@ -56,10 +56,10 @@ mod tests {
         assert_eq!(alices.len(), num_alices as usize);
         // n accounts are created
         for alice in alices {
-            assert!(book.hash_verify(&alice.pk, |a| a.sqn_expect == 0 && a.amount == PAY_AMOUNT && a.owner == alice.pk));
+            assert!(book.account_hash_verify(&alice.pk, |a| a.sqn_expect == 0 && a.amount == PAY_AMOUNT && a.owner == alice.pk));
         }
         // genesis account
-        assert!(book.hash_verify(&faucet_pk, |a| a.sqn_expect == num_alices as u32 && a.amount == GENESIS_AMOUNT - PAY_AMOUNT * num_alices as u128 && a.owner == *faucet_pk));
+        assert!(book.account_hash_verify(&faucet_pk, |a| a.sqn_expect == num_alices as u32 && a.amount == GENESIS_AMOUNT - PAY_AMOUNT * num_alices as u128 && a.owner == *faucet_pk));
 
         /////////////////////////////////////////////////////
         // more txns
@@ -76,10 +76,13 @@ mod tests {
         let alices = &genesis.alices;
         // n accounts
         for alice in alices {
-            assert!(book.hash_verify(&alice.pk, |a| a.sqn_expect == 1 && a.amount == 0 && a.owner == alice.pk));
+            assert!(book.account_hash_verify(&alice.pk, |a| a.sqn_expect == 1 && a.amount == 0 && a.owner == alice.pk));
         }
         // genesis account
-        assert!(book.hash_verify(&faucet_pk, |a| a.sqn_expect == num_alices as u32 && a.amount == GENESIS_AMOUNT && a.owner == *faucet_pk));
+        assert!(book.account_hash_verify(&faucet_pk, |a| a.sqn_expect == num_alices as u32 && a.amount == GENESIS_AMOUNT && a.owner == *faucet_pk));
+
+        // recompute root
+        assert!(book.verify_root());
     }
 
     #[test]
@@ -98,8 +101,8 @@ mod tests {
         assert!(bh1.is_ok());
         assert!(genesis.l1.txns.is_empty());
 
-        assert!(genesis.l1.account_book.hash_verify(&faucet_pk, |a| a.sqn_expect == 2u32 && a.amount == GENESIS_AMOUNT - PAY_AMOUNT && a.owner == *faucet_pk));
-        assert!(genesis.l1.account_book.hash_verify(&genesis.rollup.pk, |a| a.sqn_expect == 0u32 && a.amount == PAY_AMOUNT && a.owner == genesis.rollup.pk &&
+        assert!(genesis.l1.account_book.account_hash_verify(&faucet_pk, |a| a.sqn_expect == 2u32 && a.amount == GENESIS_AMOUNT - PAY_AMOUNT && a.owner == *faucet_pk));
+        assert!(genesis.l1.account_book.account_hash_verify(&genesis.rollup.pk, |a| a.sqn_expect == 0u32 && a.amount == PAY_AMOUNT && a.owner == genesis.rollup.pk &&
             a.rollup.as_ref().is_some_and(|ru| ru.header_hash == Hash::default() && !ru.inbox.is_empty() && ru.inbox[0] == deposit_tx_id && ru.sqn == 0)));
 
         // L2 deposit
@@ -107,7 +110,7 @@ mod tests {
         let bh2 = crate::l2_engine::process(&mut genesis.l2);
         assert!(bh2.is_ok());
         assert!(genesis.l2.txns.is_empty());
-        assert!(genesis.l2.account_book.hash_verify(&faucet_pk, |a| a.sqn_expect == 0u32 && a.amount == PAY_AMOUNT && a.owner == *faucet_pk));
+        assert!(genesis.l2.account_book.account_hash_verify(&faucet_pk, |a| a.sqn_expect == 0u32 && a.amount == PAY_AMOUNT && a.owner == *faucet_pk));
 
         // update L2 state to L1 (no zk proof)
         let bh2 = bh2.unwrap();
@@ -119,7 +122,7 @@ mod tests {
             Ok(header)
         });
         assert!(bh1.is_ok());
-        assert!(genesis.l1.account_book.hash_verify(&genesis.rollup.pk, |a| a.sqn_expect == 1u32 && a.amount == PAY_AMOUNT && a.owner == genesis.rollup.pk &&
+        assert!(genesis.l1.account_book.account_hash_verify(&genesis.rollup.pk, |a| a.sqn_expect == 1u32 && a.amount == PAY_AMOUNT && a.owner == genesis.rollup.pk &&
             a.rollup.as_ref().is_some_and(|ru| ru.header_hash == bh2.hash() && ru.inbox.is_empty() && ru.sqn == 1)));
 
         // withdrawal
@@ -127,7 +130,7 @@ mod tests {
         genesis.l2.txns.push(Transaction::Withdrawal(tx));
         let bh2 = crate::l2_engine::process(&mut genesis.l2);
         assert!(bh2.is_ok());
-        assert!(genesis.l2.account_book.hash_verify(&faucet_pk, |a| a.sqn_expect == 1u32 && a.amount == 0 && a.owner == *faucet_pk));
+        assert!(genesis.l2.account_book.account_hash_verify(&faucet_pk, |a| a.sqn_expect == 1u32 && a.amount == 0 && a.owner == *faucet_pk));
 
         // update L2 state to L1 (no zk proof), to see withdrawal effect
         let bh2 = bh2.unwrap();
@@ -140,7 +143,7 @@ mod tests {
             Ok(header)
         });
         assert!(bh1.is_ok());
-        assert!(genesis.l1.account_book.hash_verify(&genesis.rollup.pk, |a| a.sqn_expect == 2u32 && a.amount == 0 && a.owner == genesis.rollup.pk &&
+        assert!(genesis.l1.account_book.account_hash_verify(&genesis.rollup.pk, |a| a.sqn_expect == 2u32 && a.amount == 0 && a.owner == genesis.rollup.pk &&
             a.rollup.as_ref().is_some_and(|ru| ru.header_hash == bh2.hash() && ru.inbox.is_empty() && ru.sqn == 2)));
     }
 }

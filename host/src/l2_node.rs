@@ -8,11 +8,7 @@ use methods::{
 };
 use risc0_zkvm::{default_prover, ExecutorEnv, Receipt};
 
-struct Prover {
-    // engine_data: EngineData,
-    // from_node: Receiver<Vec<Transaction>>,
-    // to_node: Sender<ResultT<Receipt>>,
-}
+struct Prover {}
 
 impl Prover {
     fn spawn(
@@ -21,11 +17,7 @@ impl Prover {
         to_node: Sender<ResultT<Receipt>>,
     ) {
         tokio::spawn(async move {
-            Self {
-                // engine_data: EngineData::new(faucet_pk.clone(), 0),
-                // from_node,
-                // to_node,
-            }
+            Self {}
                 .run(faucet_pk, from_node, to_node)
                 .await;
         });
