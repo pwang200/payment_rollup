@@ -1,6 +1,6 @@
 // #![feature(map_many_mut)]
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::time::{SystemTime, UNIX_EPOCH};
 use serde::{Serialize, Deserialize};
 use sha2::{Sha256, Digest};
@@ -11,7 +11,9 @@ use ed25519_dalek::VerifyingKey;
 use ed25519_dalek::ed25519::signature::SignerMut;
 
 //monotree = { git = "https://github.com/pwang200/monotree.git" }
-use monotree::Monotree;
+// use monotree::Monotree;
+
+use partial_binary_merkle::PartialMerkleTrie;
 
 pub const ONE_BILLION: u128 = 1_000_000_000;
 pub const GENESIS_AMOUNT: u128 = ONE_BILLION;
@@ -211,22 +213,24 @@ impl Account {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct AccountBook {
-    proof_tree: Monotree,
-    pub root: Hash,
+    proof_tree: PartialMerkleTrie,
     accounts: HashMap<AccountID, Account>,//TODO stable serialization
 }
 
 impl AccountBook {
     pub fn new(faucet_key: VerifyingKey, faucet_amout: u128) -> AccountBook {
-        let mut tree = Monotree::default();
-        let root = None;
+        let mut tree = PartialMerkleTrie::new();
         let mut b = HashMap::new();
         let a = Account::new(faucet_key, faucet_amout, None);
         let id = a.id();
         let a_hash = a.hash();
         b.insert(id, a);
-        let r = tree.insert(root.as_ref(), &id, &a_hash).unwrap().unwrap();
-        AccountBook { proof_tree: tree, root: r, accounts: b }
+        tree.insert_or_replace(id, a_hash);
+        AccountBook { proof_tree: tree, accounts: b }
+    }
+
+    pub fn root(&self) -> &Hash {
+        &self.proof_tree.root
     }
 
     pub fn get_account(&mut self, aid: &AccountID) -> Option<&mut Account> {
@@ -459,42 +463,58 @@ impl AccountBook {
         Ok(hashes)
     }
 
-    pub fn update_tree(&mut self, mut changes: HashMap<AccountID, Hash>) {
-        let mut ids = Vec::new();
-        let mut vs = Vec::new();
-        for (k, v) in changes.drain() {
-            ids.push(k);
-            vs.push(v);
+
+    //for supporting a more richer set of txns, the account store must support versioning or
+    //other ways to pre-run and get affected accounts before modifying the accounts
+    fn get_affected_account_ids(&self,  txns: &Vec<Transaction>) -> Vec<AccountID> {
+        let mut ids = HashSet::new();
+        for tx in txns{
+            match tx {
+                // only layer 2 txns
+                Transaction::Pay(tx) => {
+                    ids.insert(pk_to_hash(&tx.sender));
+                    ids.insert(pk_to_hash(&tx.payload.to));
+                }
+                Transaction::Deposit(_tx) => {panic!("only l2 txns")}
+                Transaction::RollupCreate(_tx) => {panic!("only l2 txns")}
+                Transaction::RollupUpdate(_tx) => {panic!("only l2 txns")}
+                Transaction::DepositL2(tx) => {
+                    ids.insert(pk_to_hash(&tx.sender));
+                }
+                Transaction::Withdrawal(tx) => {
+                    ids.insert(pk_to_hash(&tx.sender));
+                }
+            }
         }
-        self.root = self.proof_tree.inserts(Some(&self.root), &ids, &vs).unwrap().unwrap();
+        ids.into_iter().collect()
     }
 
-    pub fn verify_root(&mut self) -> bool {
-        let mut ids = Vec::new();
-        let mut vs = Vec::new();
-        for (k, v) in &self.accounts {
-            ids.push(k.clone());
-            vs.push(v.hash());
+    pub fn update_tree(&mut self, changes: HashMap<AccountID, Hash>) {
+        let to_inserts: Vec<(AccountID, Hash)> = changes.into_iter().collect();
+        self.proof_tree.insert_or_replace_batch(to_inserts);
+    }
+
+    pub fn get_partial(&self, txns: &Vec<Transaction>) -> AccountBook {
+        let ids = self.get_affected_account_ids(txns);
+        let mut accounts = HashMap::new();
+        ids.iter().for_each(|id| {
+            let a = self.accounts.get(id).unwrap();
+            accounts.insert(id.clone(), a.clone());
+        });
+
+        let id_refs = ids.iter().map(|x| x ).collect();
+        let proof_tree = self.proof_tree.get_partial(&id_refs);
+        AccountBook { proof_tree, accounts }
+    }
+
+    pub fn verify_partial_root(&self) -> bool {
+        for (id, a) in &self.accounts{
+            let a_h = self.proof_tree.get(id);
+            if a_h.is_none() || a_h.unwrap() != a.hash() {
+                return false;
+            }
         }
-        // let r0 = {
-        //     let mut tree = Monotree::default();
-        //     let root = None;
-        //     tree.inserts(root.as_ref(), ids.as_slice(), vs.as_slice()).unwrap().unwrap()
-        // };
-        //
-        // let r1 = {
-        //     let mut tree = Monotree::default();
-        //     let root = None;
-        //     tree.inserts(root.as_ref(), ids.as_slice(), vs.as_slice()).unwrap().unwrap()
-        // };
-
-        let r2 = {
-            self.proof_tree.inserts(Some(&self.root), &ids, &vs).unwrap().unwrap()
-        };
-
-        // println!("{:?}\n{:?}\n{:?}\n{:?}", r0, r1, r2, self.root);
-        // true
-        r2 == self.root
+        self.proof_tree.verify_partial()
     }
 
     #[cfg(test)]
@@ -515,21 +535,16 @@ impl AccountBook {
         }
         let account_hash = account.hash();
 
-        let leaf = self.proof_tree.get(Some(&self.root), &id);
-        if leaf.is_err() {
-            return false;
-        }
-        let leaf = leaf.unwrap();
+        let leaf = self.proof_tree.get(&id);
         if leaf.is_none() {
             return false;
         }
-        let leaf = leaf.unwrap();
-        if account_hash != leaf {
+        if account_hash != leaf.unwrap() {
             return false;
         }
 
-        let proof = self.proof_tree.get_merkle_proof(Some(&self.root), &id).unwrap();
-        monotree::verify_proof(Some(&self.root), &leaf, proof.as_ref())
+        let proof = self.proof_tree.get_proof(&id).unwrap();
+        proof.verify(self.root())
     }
 }
 
@@ -587,6 +602,15 @@ impl EngineData {
         self.txns.clear();
         self.sqn += 1;
         self.parent = parent;
+    }
+
+    pub fn get_partial(&self) -> EngineData{
+        EngineData{
+            parent: self.parent,
+            account_book: self.account_book.get_partial(&self.txns),
+            txns: self.txns.clone(),
+            sqn: self.sqn,
+        }
     }
 }
 

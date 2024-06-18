@@ -82,7 +82,7 @@ mod tests {
         assert!(book.account_hash_verify(&faucet_pk, |a| a.sqn_expect == num_alices as u32 && a.amount == GENESIS_AMOUNT && a.owner == *faucet_pk));
 
         // recompute root
-        assert!(book.verify_root());
+        assert!(book.verify_partial_root());
     }
 
     #[test]

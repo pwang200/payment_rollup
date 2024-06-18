@@ -37,7 +37,7 @@ pub fn process(input: &mut EngineData) -> ResultT<BlockHeaderL2> {
 
     let header = BlockHeaderL2 {
         parent: input.parent,
-        state_root: input.account_book.root,
+        state_root: *input.account_book.root(),
         sqn: input.sqn,
         txns_hash,
         inbox_msg_hash: x,

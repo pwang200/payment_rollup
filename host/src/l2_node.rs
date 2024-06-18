@@ -3,9 +3,7 @@ use ed25519_dalek::VerifyingKey;
 use tokio::time::{sleep, Duration, Instant};
 use common::common::*;
 
-use methods::{
-    PAYMENT_L2_ELF//, PAYMENT_L2_ID,
-};
+use methods::PAYMENT_L2_ELF;
 use risc0_zkvm::{default_prover, ExecutorEnv, Receipt};
 
 struct Prover {}
@@ -33,26 +31,26 @@ impl Prover {
                 Some(mut txns) = from_node.recv() =>{
                     let time_start = clock();
                     println!("Prover, from node, time {}, {} txns", time_start/1000, txns.len());
-
                     engine_data.txns.append(&mut txns);
                     {
                         // debug only
                         //println!("Prover, before prove: {:?}", engine_data);
                     }
-                    //let data_in = self.engine_data;
-                    let (receipt, out_data) = tokio::task::spawn_blocking(|| {
-                        // This is running on a thread where blocking {
+
+                    let input = engine_data.get_partial();
+                    assert!(input.account_book.verify_partial_root());
+
+                    let receipt = tokio::task::spawn_blocking(move || {
+                        // This is running on a blocking thread
                         let env = ExecutorEnv::builder()
-                        .write(&engine_data)
+                        .write(&input)
                         .unwrap()
                         .build()
                         .unwrap();
 
                         let prover = default_prover();
-                        (prover.prove(env, PAYMENT_L2_ELF), engine_data)
-                        // .unwrap()
+                        prover.prove(env, PAYMENT_L2_ELF)
                     }).await.expect("blocking prover");
-                    engine_data = out_data;
                     let time = clock() - time_start;
                     println!("Prover, prove time {}", time/1000);
                      {
@@ -62,7 +60,7 @@ impl Prover {
 
                     // run the execution too, since prover won't update self.engine_data
                     let time_start = clock();
-                    let _header = common::l2_engine::process(&mut  engine_data).expect("native run");
+                    let _header = common::l2_engine::process(&mut engine_data).expect("native run");
                     let time = clock() - time_start;
                     println!("Prover, native execute time {}/1000 seconds", time);
 
@@ -71,9 +69,6 @@ impl Prover {
                         //println!("Prover, after execute: {:?}",  engine_data);
                         println!("Prover, execute header: {:?}", _header);
                         println!("Prover, execute header hash: {:?}", _header.hash());
-                        // let prover_header : BlockHeaderL2 = receipt.clone().unwrap().journal.decode().unwrap();
-                        // println!("Prover, prove header: {:?}", prover_header);
-                        // println!("Prover, prove header hash: {:?}", prover_header.hash());
                         println!("Prover faucet account {:?}",  engine_data.account_book.get_account(&pk_to_hash(&faucet_pk)));
                     }
 

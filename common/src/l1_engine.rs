@@ -34,7 +34,7 @@ pub fn process(input: &mut EngineData,
 
     let header = BlockHeaderL1 {
         parent: input.parent,
-        state_root: input.account_book.root,
+        state_root: *input.account_book.root(),
         sqn: input.sqn,
         txns_hash,
         deposits,
