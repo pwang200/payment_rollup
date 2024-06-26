@@ -51,6 +51,7 @@ mod tests {
                 to_update.insert(k, v);
             }
         }
+        let to_update: Vec<(AccountID, Hash)> = to_update.into_iter().collect();
         book.update_tree(to_update);
 
         assert_eq!(alices.len(), num_alices as usize);
@@ -72,6 +73,7 @@ mod tests {
                 to_update.insert(k, v);
             }
         }
+        let to_update: Vec<(AccountID, Hash)> = to_update.into_iter().collect();
         book.update_tree(to_update);
         let alices = &genesis.alices;
         // n accounts

@@ -30,6 +30,7 @@ pub fn process(input: &mut EngineData,
             to_update.insert(k, v);
         }
     }
+    let to_update: Vec<(AccountID, Hash)> = to_update.into_iter().collect();
     input.account_book.update_tree(to_update);
 
     let header = BlockHeaderL1 {
