@@ -26,6 +26,7 @@ pub fn process(input: &mut EngineData) -> ResultT<BlockHeaderL2> {
             to_update.insert(k, v);
         }
     }
+    let to_update: Vec<(AccountID, Hash)> = to_update.into_iter().collect();
     input.account_book.update_tree(to_update);
 
     let mut hasher = DefaultHasher::new();

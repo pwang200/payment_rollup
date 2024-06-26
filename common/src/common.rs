@@ -1,6 +1,6 @@
 // #![feature(map_many_mut)]
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashSet, VecDeque};
 use std::time::{SystemTime, UNIX_EPOCH};
 use serde::{Serialize, Deserialize};
 use sha2::{Sha256, Digest};
@@ -45,8 +45,10 @@ pub fn pk_to_hash(pk: &VerifyingKey) -> Hash {
 
 pub trait TxPayload {
     fn hash(&self, hasher: &mut DefaultHasher);
+    fn sender_qualify(&self, account: &Account) -> bool;
 }
 
+#[repr(align(4))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Tx<T>
     where T: TxPayload
@@ -94,6 +96,7 @@ impl<T> Tx<T>
     }
 }
 
+#[repr(align(4))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Payment {
     pub to: VerifyingKey,
@@ -105,8 +108,13 @@ impl TxPayload for Payment {
         hasher.update(self.to.as_bytes());
         hasher.update(self.amount.to_be_bytes());
     }
+
+    fn sender_qualify(&self, account: &Account) -> bool {
+        account.amount >= self.amount
+    }
 }
 
+#[repr(align(4))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CreateRollupAccount {
     // must be a new account
@@ -119,8 +127,13 @@ impl TxPayload for CreateRollupAccount {
         hasher.update(self.rollup_pk.as_bytes());
         //hasher.update(self.genesis_state_hash);
     }
+
+    fn sender_qualify(&self, _account: &Account) -> bool {
+        true
+    }
 }
 
+#[repr(align(4))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct L1ToL2Deposit {
     pub rollup_pk: VerifyingKey,
@@ -131,6 +144,10 @@ impl TxPayload for L1ToL2Deposit {
     fn hash(&self, hasher: &mut DefaultHasher) {
         hasher.update(self.rollup_pk.as_bytes());
         hasher.update(self.amount.to_be_bytes());
+    }
+
+    fn sender_qualify(&self, account: &Account) -> bool {
+        account.amount >= self.amount
     }
 }
 
@@ -143,8 +160,12 @@ impl TxPayload for L2ToL1Withdrawal {
     fn hash(&self, hasher: &mut DefaultHasher) {
         hasher.update(self.amount.to_be_bytes());
     }
+    fn sender_qualify(&self, account: &Account) -> bool {
+        account.amount >= self.amount
+    }
 }
 
+#[repr(align(4))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 // cross chain message, not signed since there is no dedicated relyer
 pub struct RollupStateUpdate {
@@ -156,8 +177,12 @@ impl TxPayload for RollupStateUpdate {
         //let data: Vec<u8> = bincode::serialize(&self.proof_receipt).unwrap();
         hasher.update(&self.proof_receipt);
     }
+    fn sender_qualify(&self, _account: &Account) -> bool {
+        true
+    }
 }
 
+#[repr(align(4))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct RollupState {
     pub inbox: VecDeque<Hash>,
@@ -176,6 +201,7 @@ impl RollupState {
 }
 
 
+#[repr(align(4))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Account {
     pub owner: VerifyingKey,
@@ -211,16 +237,17 @@ impl Account {
     }
 }
 
+#[repr(align(4))]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct AccountBook {
     proof_tree: PartialMerkleTrie,
-    accounts: HashMap<AccountID, Account>,//TODO stable serialization
+    accounts: BTreeMap<AccountID, Account>,
 }
 
 impl AccountBook {
     pub fn new(faucet_key: VerifyingKey, faucet_amout: u128) -> AccountBook {
         let mut tree = PartialMerkleTrie::new();
-        let mut b = HashMap::new();
+        let mut b = BTreeMap::new();
         let a = Account::new(faucet_key, faucet_amout, None);
         let id = a.id();
         let a_hash = a.hash();
@@ -231,7 +258,7 @@ impl AccountBook {
 
     pub fn new_batch(keys: Vec<VerifyingKey>, amout: u128) -> AccountBook {
         let mut tree = PartialMerkleTrie::new();
-        let mut b = HashMap::new();
+        let mut b = BTreeMap::new();
         keys.into_iter().for_each(|k| {
             let a = Account::new(k, amout, None);
             let id = a.id();
@@ -259,20 +286,20 @@ impl AccountBook {
         self.accounts.get_mut(&aid).unwrap()
     }
 
-    pub fn get_account_pair(&mut self, alice: &AccountID, bob: &AccountID) -> ResultT<(&mut Account, &mut Account)> {
-        let aa = self.accounts.get_many_mut([alice, bob]);
-        if aa.is_none() {
-            return Err("missing");
-        }
-        let [a, b] = aa.unwrap();
-        Ok((a, b))
-    }
+    // pub fn get_account_pair(&mut self, alice: &AccountID, bob: &AccountID) -> ResultT<(&mut Account, &mut Account)> {
+    //     let aa = self.accounts.get_many_mut([alice, bob]);
+    //     if aa.is_none() {
+    //         return Err("missing");
+    //     }
+    //     let [a, b] = aa.unwrap();
+    //     Ok((a, b))
+    // }
 
     pub fn get_num_accounts(&self) -> usize {
         self.accounts.len()
     }
 
-    pub fn sender_sig_sqn_check<T>(&self, tx: &Tx<T>) -> Result<AccountID, &'static str>
+    pub fn sender_check<T>(&self, tx: &Tx<T>) -> Result<AccountID, &'static str>
         where T: TxPayload
     {
         if !tx.sig_verify() {
@@ -283,6 +310,9 @@ impl AccountBook {
             if a_sender.sqn_expect != tx.sqn {
                 return Err("sqn");
             }
+            if !tx.payload.sender_qualify(a_sender){
+                return Err("sender");
+            }
             return Ok(id_sender);
         } else {
             return Err("account");
@@ -292,11 +322,11 @@ impl AccountBook {
     pub fn process_payment(&mut self, tx: &Tx<Payment>) -> TxResult
     {
         let mut hashes = Vec::new();
-        let id_sender = self.sender_sig_sqn_check(tx)?;
+        let id_sender = self.sender_check(tx)?;
         let a_sender = self.accounts.get_mut(&id_sender).unwrap();
-        if a_sender.amount < tx.payload.amount {
-            return Err("balance");
-        }
+        // if a_sender.amount < tx.payload.amount {
+        //     return Err("balance");
+        // }
         a_sender.amount -= tx.payload.amount;
         a_sender.sqn_expect += 1;
         let a_sender_h = a_sender.hash();
@@ -322,7 +352,7 @@ impl AccountBook {
     pub fn process_create_rollup_account(&mut self, tx: &Tx<CreateRollupAccount>) -> TxResult
     {
         let mut hashes = Vec::new();
-        let id_sender = self.sender_sig_sqn_check(tx)?;
+        let id_sender = self.sender_check(tx)?;
         let id_to = pk_to_hash(&tx.payload.rollup_pk);
         match self.accounts.get(&id_to) {
             None => {
@@ -346,26 +376,32 @@ impl AccountBook {
     pub fn process_deposit_l1(&mut self, tx: &Tx<L1ToL2Deposit>) -> TxResult
     {
         let mut hashes = Vec::new();
-        let id_sender = self.sender_sig_sqn_check(tx)?;
+        let id_sender = self.sender_check(tx)?;
         let id_to = pk_to_hash(&tx.payload.rollup_pk);
-        let (a_sender, a_to) = self.get_account_pair(&id_sender, &id_to)?;
-
-        if a_sender.amount < tx.payload.amount {
-            return Err("balance");
+        // let (a_sender, a_to) = self.get_account_pair(&id_sender, &id_to)?;
+        //
+        // if a_sender.amount < tx.payload.amount {
+        //     return Err("balance");
+        // }
+        let a_to= self.accounts.get_mut(&id_to);
+        if a_to.is_none() {
+            return Err("missing");
         }
-
+        let a_to = a_to.unwrap();
         if a_to.rollup.is_none() { return Err("not rollup account"); }
-
         let rollup_state = a_to.rollup.as_mut().unwrap();
-        a_sender.amount -= tx.payload.amount;
-        a_sender.sqn_expect += 1;
-        let a_sender_h = a_sender.hash();
-        hashes.push((id_sender, a_sender_h));
 
         a_to.amount += tx.payload.amount;
         rollup_state.inbox.push_back(tx.id());
         let a_to_h = a_to.hash();
         hashes.push((id_to, a_to_h));
+
+        let a_sender = self.accounts.get_mut(&id_sender).unwrap();
+        a_sender.amount -= tx.payload.amount;
+        a_sender.sqn_expect += 1;
+        let a_sender_h = a_sender.hash();
+        hashes.push((id_sender, a_sender_h));
+
         Ok(hashes)
     }
 
@@ -393,11 +429,11 @@ impl AccountBook {
                               w_records: &mut Vec<WithdrawalRecord>) -> TxResult
     {
         let mut hashes = Vec::new();
-        let id_sender = self.sender_sig_sqn_check(tx)?;
+        let id_sender = self.sender_check(tx)?;
         let a_sender = self.accounts.get_mut(&id_sender).unwrap();
-        if a_sender.amount < tx.payload.amount {
-            return Err("balance");
-        }
+        // if a_sender.amount < tx.payload.amount {
+        //     return Err("balance");
+        // }
         a_sender.amount -= tx.payload.amount;
         a_sender.sqn_expect += 1;
         let a_sender_h = a_sender.hash();
@@ -419,7 +455,7 @@ impl AccountBook {
         // process withdrawal. We don't separate this step since no gas concern
 
         // verification steps:
-        let id_sender = self.sender_sig_sqn_check(tx)?;
+        let id_sender = self.sender_check(tx)?;
 
         let receipt = &tx.payload.proof_receipt;
         let header: BlockHeaderL2 = valid_receipt(receipt)?;
@@ -502,14 +538,13 @@ impl AccountBook {
         ids.into_iter().collect()
     }
 
-    pub fn update_tree(&mut self, changes: HashMap<AccountID, Hash>) {
-        let to_inserts: Vec<(AccountID, Hash)> = changes.into_iter().collect();
-        self.proof_tree.insert_or_replace_batch(to_inserts);
+    pub fn update_tree(&mut self, changes: Vec<(AccountID, Hash)>) {
+        self.proof_tree.insert_or_replace_batch(changes);
     }
 
     pub fn get_partial(&self, txns: &Vec<Transaction>) -> AccountBook {
         let ids = self.get_affected_account_ids(txns);
-        let mut accounts = HashMap::new();
+        let mut accounts = BTreeMap::new();
         ids.iter().for_each(|id| {
             let a = self.accounts.get(id).unwrap();
             accounts.insert(id.clone(), a.clone());
@@ -561,6 +596,7 @@ impl AccountBook {
     }
 }
 
+#[repr(align(4))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct WithdrawalRecord {
     pub to: VerifyingKey,
@@ -593,6 +629,7 @@ pub fn tx_set_hash(txns: &Vec<Transaction>) -> Hash {
     x
 }
 
+#[repr(align(4))]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct EngineData {
     pub parent: Hash,
@@ -636,6 +673,7 @@ impl EngineData {
     }
 }
 
+#[repr(align(4))]
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct BlockHeaderL1 {
     pub parent: Hash,
@@ -657,6 +695,7 @@ impl BlockHeaderL1 {
     }
 }
 
+#[repr(align(4))]
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct BlockHeaderL2 {
     pub parent: Hash,
