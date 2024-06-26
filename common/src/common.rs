@@ -229,6 +229,19 @@ impl AccountBook {
         AccountBook { proof_tree: tree, accounts: b }
     }
 
+    pub fn new_batch(keys: Vec<VerifyingKey>, amout: u128) -> AccountBook {
+        let mut tree = PartialMerkleTrie::new();
+        let mut b = HashMap::new();
+        keys.into_iter().for_each(|k| {
+            let a = Account::new(k, amout, None);
+            let id = a.id();
+            let a_hash = a.hash();
+            b.insert(id, a);
+            tree.insert_or_replace(id, a_hash);
+        });
+        AccountBook { proof_tree: tree, accounts: b }
+    }
+
     pub fn root(&self) -> &Hash {
         &self.proof_tree.root
     }
@@ -593,6 +606,15 @@ impl EngineData {
         EngineData {
             parent: Hash::default(),
             account_book: AccountBook::new(faucet_key, faucet_amout),
+            txns: vec![],
+            sqn: 0,
+        }
+    }
+
+    pub fn new_batch(keys: Vec<VerifyingKey>, amout: u128) -> EngineData {
+        EngineData {
+            parent: Hash::default(),
+            account_book: AccountBook::new_batch(keys, amout),
             txns: vec![],
             sqn: 0,
         }
