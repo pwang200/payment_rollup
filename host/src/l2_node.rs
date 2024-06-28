@@ -1,5 +1,4 @@
 use tokio::sync::mpsc::{channel, Sender, Receiver};
-use ed25519_dalek::VerifyingKey;
 use tokio::time::{sleep, Duration, Instant};
 use common::common::*;
 

@@ -2,8 +2,7 @@ use tokio::signal;
 use tokio::sync::mpsc::channel;
 
 use rand::rngs::OsRng;
-use ed25519_dalek::SigningKey;
-use common::common::TxSigner;
+use common::common::{SigningKey, TxSigner};
 use crate::client::Client;
 use crate::l1_node::L1Node;
 use crate::l2_node::L2Node;
@@ -23,8 +22,8 @@ async fn main()
     let (tx_l2_l1, rx_l2_l1) = channel(CHANNEL_CAPACITY);
 
     let mut csprng = OsRng;
-    let faucet = TxSigner::new(SigningKey::generate(&mut csprng));
-    let rollup = TxSigner::new(SigningKey::generate(&mut csprng));
+    let faucet = TxSigner::new(SigningKey::random(&mut csprng));
+    let rollup = TxSigner::new(SigningKey::random(&mut csprng));
 
     //rollup account setup
     let f_pk = faucet.pk.clone();
