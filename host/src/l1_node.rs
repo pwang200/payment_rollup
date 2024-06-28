@@ -71,7 +71,7 @@ impl L1Node {
                         }
                     }){
                         Ok(header) => {
-                            for d in header.deposits{
+                            for d in header.events{
                                 match self.to_l2.send(Transaction::DepositL2(d)).await{
                                     Ok(_) => {}
                                     Err(e) => {

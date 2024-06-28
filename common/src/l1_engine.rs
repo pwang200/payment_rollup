@@ -38,7 +38,7 @@ pub fn process(input: &mut EngineData,
         state_root: *input.account_book.root(),
         sqn: input.sqn,
         txns_hash,
-        deposits,
+        events: deposits,
     };
 
     input.update(header.hash());

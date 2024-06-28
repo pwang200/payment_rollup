@@ -682,7 +682,7 @@ pub struct BlockHeaderL1 {
     pub state_root: Hash,
     pub sqn: u32,
     pub txns_hash: Hash,
-    pub deposits: Vec<Tx<L1ToL2Deposit>>,
+    pub events: Vec<Tx<L1ToL2Deposit>>,
 }
 
 impl BlockHeaderL1 {
@@ -703,7 +703,7 @@ pub struct BlockHeaderL2 {
     pub parent: Hash,
     pub state_root: Hash,
     pub sqn: u32,
-    pub txns_hash: Hash,
+    pub txns_hash: Hash,//TODO consider changing to l2 txns only to match design doc
     pub inbox_msg_hash: Hash,
     pub inbox_msg_count: u32,
     pub withdrawals: Vec<WithdrawalRecord>,
