@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use crate::common::*;
-    use ed25519_dalek::{SigningKey};
+    use k256::ecdsa::SigningKey;
     use std::collections::HashMap;
     use rand::rngs::OsRng;
 
@@ -18,11 +18,11 @@ mod tests {
     impl Genesis {
         fn new(num_alices: usize) -> Genesis {
             let mut csprng = OsRng;
-            let faucet = TxSigner::new(SigningKey::generate(&mut csprng));
-            let rollup = TxSigner::new(SigningKey::generate(&mut csprng));
+            let faucet = TxSigner::new(SigningKey::random(&mut csprng));
+            let rollup = TxSigner::new(SigningKey::random(&mut csprng));
             let mut alices = Vec::new();
             for _ in 0..num_alices {
-                alices.push(TxSigner::new(SigningKey::generate(&mut csprng)));
+                alices.push(TxSigner::new(SigningKey::random(&mut csprng)));
             }
             let l1 = EngineData::new(faucet.pk, GENESIS_AMOUNT);
             let l2 = EngineData::new(faucet.pk, 0);

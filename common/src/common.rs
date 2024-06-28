@@ -1,17 +1,18 @@
-// #![feature(map_many_mut)]
-
 use std::collections::{BTreeMap, HashSet, VecDeque};
+use std::fmt;
+use std::fmt::Debug;
 use std::time::{SystemTime, UNIX_EPOCH};
 use serde::{Serialize, Deserialize};
 use sha2::{Sha256, Digest};
 
-use ed25519_dalek::{SigningKey, Verifier};
-use ed25519_dalek::Signature;
-use ed25519_dalek::VerifyingKey;
-use ed25519_dalek::ed25519::signature::SignerMut;
+use k256::{
+    ecdsa::{signature::{Signer, Verifier}, Signature},
+    // EncodedPoint,
+};
 
-//monotree = { git = "https://github.com/pwang200/monotree.git" }
-// use monotree::Monotree;
+pub type SigningKey = k256::ecdsa::SigningKey;
+pub type VerifyingKey = k256::ecdsa::VerifyingKey;
+
 
 use partial_binary_merkle::PartialMerkleTrie;
 
@@ -38,7 +39,7 @@ pub type TxResult = ResultT<Vec<(AccountID, Hash)>>;
 
 pub fn pk_to_hash(pk: &VerifyingKey) -> Hash {
     let mut hasher = Sha256::new();
-    hasher.update(pk.as_bytes());
+    hasher.update(pk.to_sec1_bytes());//.as_bytes());
     let x: Hash = hasher.finalize().as_slice().try_into().expect("hash");
     x
 }
@@ -49,7 +50,7 @@ pub trait TxPayload {
 }
 
 #[repr(align(4))]
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Tx<T>
     where T: TxPayload
 {
@@ -57,6 +58,16 @@ pub struct Tx<T>
     pub sqn: u32,
     pub payload: T,
     sig: Signature,
+}
+
+impl<T: Debug + TxPayload> fmt::Debug for Tx<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Tx")
+            .field("sender", &self.sender)
+            .field("sqn", &self.sqn)
+            .field("payload", &self.payload)
+            .finish()
+    }
 }
 
 impl<T> Tx<T>
@@ -68,7 +79,7 @@ impl<T> Tx<T>
                signing_key: &mut SigningKey,
     ) -> Tx<T> {
         let mut hasher = DefaultHasher::new();
-        hasher.update(sender.as_bytes());
+        hasher.update(sender.to_encoded_point(false));
         hasher.update(sqn.to_be_bytes());
         payload.hash(&mut hasher);
         let x: Hash = hasher.finalize().as_slice().try_into().expect("hash");
@@ -78,7 +89,7 @@ impl<T> Tx<T>
 
     pub fn id(&self) -> Hash {
         let mut hasher = DefaultHasher::new();
-        hasher.update(self.sender.as_bytes());
+        hasher.update(self.sender.to_encoded_point(false));
         hasher.update(self.sqn.to_be_bytes());
         self.payload.hash(&mut hasher);
         hasher.update(self.sig.to_bytes());
@@ -88,7 +99,7 @@ impl<T> Tx<T>
 
     pub fn sig_verify(&self) -> bool {
         let mut hasher = DefaultHasher::new();
-        hasher.update(self.sender.as_bytes());
+        hasher.update(self.sender.to_encoded_point(false));
         hasher.update(self.sqn.to_be_bytes());
         self.payload.hash(&mut hasher);
         let x: Hash = hasher.finalize().as_slice().try_into().expect("hash");
@@ -105,7 +116,7 @@ pub struct Payment {
 
 impl TxPayload for Payment {
     fn hash(&self, hasher: &mut DefaultHasher) {
-        hasher.update(self.to.as_bytes());
+        hasher.update(self.to.to_encoded_point(false));
         hasher.update(self.amount.to_be_bytes());
     }
 
@@ -124,7 +135,7 @@ pub struct CreateRollupAccount {
 
 impl TxPayload for CreateRollupAccount {
     fn hash(&self, hasher: &mut DefaultHasher) {
-        hasher.update(self.rollup_pk.as_bytes());
+        hasher.update(self.rollup_pk.to_encoded_point(false));
         //hasher.update(self.genesis_state_hash);
     }
 
@@ -142,7 +153,7 @@ pub struct L1ToL2Deposit {
 
 impl TxPayload for L1ToL2Deposit {
     fn hash(&self, hasher: &mut DefaultHasher) {
-        hasher.update(self.rollup_pk.as_bytes());
+        hasher.update(self.rollup_pk.to_encoded_point(false));
         hasher.update(self.amount.to_be_bytes());
     }
 
@@ -221,7 +232,7 @@ impl Account {
 
     pub fn hash(&self) -> Hash {
         let mut hasher = DefaultHasher::new();
-        hasher.update(self.owner.as_bytes());
+        hasher.update(self.owner.to_encoded_point(false));
         hasher.update(self.amount.to_be_bytes());
         hasher.update(self.sqn_expect.to_be_bytes());
         match &self.rollup {
@@ -286,15 +297,6 @@ impl AccountBook {
         self.accounts.get_mut(&aid).unwrap()
     }
 
-    // pub fn get_account_pair(&mut self, alice: &AccountID, bob: &AccountID) -> ResultT<(&mut Account, &mut Account)> {
-    //     let aa = self.accounts.get_many_mut([alice, bob]);
-    //     if aa.is_none() {
-    //         return Err("missing");
-    //     }
-    //     let [a, b] = aa.unwrap();
-    //     Ok((a, b))
-    // }
-
     pub fn get_num_accounts(&self) -> usize {
         self.accounts.len()
     }
@@ -310,7 +312,7 @@ impl AccountBook {
             if a_sender.sqn_expect != tx.sqn {
                 return Err("sqn");
             }
-            if !tx.payload.sender_qualify(a_sender){
+            if !tx.payload.sender_qualify(a_sender) {
                 return Err("sender");
             }
             return Ok(id_sender);
@@ -383,7 +385,7 @@ impl AccountBook {
         // if a_sender.amount < tx.payload.amount {
         //     return Err("balance");
         // }
-        let a_to= self.accounts.get_mut(&id_to);
+        let a_to = self.accounts.get_mut(&id_to);
         if a_to.is_none() {
             return Err("missing");
         }
@@ -515,18 +517,18 @@ impl AccountBook {
 
     //for supporting a more richer set of txns, the account store must support versioning or
     //other ways to pre-run and get affected accounts before modifying the accounts
-    fn get_affected_account_ids(&self,  txns: &Vec<Transaction>) -> Vec<AccountID> {
+    fn get_affected_account_ids(&self, txns: &Vec<Transaction>) -> Vec<AccountID> {
         let mut ids = HashSet::new();
-        for tx in txns{
+        for tx in txns {
             match tx {
                 // only layer 2 txns
                 Transaction::Pay(tx) => {
                     ids.insert(pk_to_hash(&tx.sender));
                     ids.insert(pk_to_hash(&tx.payload.to));
                 }
-                Transaction::Deposit(_tx) => {panic!("only l2 txns")}
-                Transaction::RollupCreate(_tx) => {panic!("only l2 txns")}
-                Transaction::RollupUpdate(_tx) => {panic!("only l2 txns")}
+                Transaction::Deposit(_tx) => { panic!("only l2 txns") }
+                Transaction::RollupCreate(_tx) => { panic!("only l2 txns") }
+                Transaction::RollupUpdate(_tx) => { panic!("only l2 txns") }
                 Transaction::DepositL2(tx) => {
                     ids.insert(pk_to_hash(&tx.sender));
                 }
@@ -550,13 +552,13 @@ impl AccountBook {
             accounts.insert(id.clone(), a.clone());
         });
 
-        let id_refs = ids.iter().map(|x| x ).collect();
+        let id_refs = ids.iter().map(|x| x).collect();
         let proof_tree = self.proof_tree.get_partial(&id_refs);
         AccountBook { proof_tree, accounts }
     }
 
     pub fn verify_partial_root(&self) -> bool {
-        for (id, a) in &self.accounts{
+        for (id, a) in &self.accounts {
             let a_h = self.proof_tree.get(id);
             if a_h.is_none() || a_h.unwrap() != a.hash() {
                 return false;
@@ -663,8 +665,8 @@ impl EngineData {
         self.parent = parent;
     }
 
-    pub fn get_partial(&self) -> EngineData{
-        EngineData{
+    pub fn get_partial(&self) -> EngineData {
+        EngineData {
             parent: self.parent,
             account_book: self.account_book.get_partial(&self.txns),
             txns: self.txns.clone(),
@@ -717,7 +719,7 @@ impl BlockHeaderL2 {
         hasher.update(self.inbox_msg_hash);
         hasher.update(self.inbox_msg_count.to_be_bytes());
         for w in &self.withdrawals {
-            hasher.update(w.to.as_bytes());
+            hasher.update(w.to.to_encoded_point(false));
             hasher.update(w.amount.to_be_bytes());
         }
         let x: Hash = hasher.finalize().as_slice().try_into().expect("hash");
@@ -734,7 +736,7 @@ pub struct TxSigner {
 
 impl TxSigner {
     pub fn new(sk: SigningKey) -> TxSigner {
-        let pk = sk.verifying_key();
+        let pk = sk.verifying_key().clone();
         TxSigner { sk, pk, sqn: 0 }
     }
 }

@@ -1,7 +1,6 @@
 use common::common::*;
 use methods::PAYMENT_L2_ID;
 use tokio::sync::mpsc::{Sender, Receiver};
-use ed25519_dalek::{VerifyingKey};
 use tokio::time::{sleep, Duration, Instant};
 use risc0_zkvm::Receipt;
 
@@ -37,7 +36,7 @@ impl L1Node {
         });
     }
 
-    async fn run(&mut self, faucet_pk: VerifyingKey, rollup_pk: VerifyingKey) {
+    async fn run(&mut self, _faucet_pk: VerifyingKey, _rollup_pk: VerifyingKey) {
         let timer = sleep(Duration::from_millis(ONE_SECOND * 4));
         tokio::pin!(timer);
 
@@ -83,8 +82,8 @@ impl L1Node {
                             }
                             {
                                 // debug only
-                                println!("L1Node faucet account {:?}", self.engine_data.account_book.get_account(&pk_to_hash(&faucet_pk)));
-                                println!("L1Node rollup account {:?}", self.engine_data.account_book.get_account(&pk_to_hash(&rollup_pk)));
+                                // println!("L1Node faucet account {:?}", self.engine_data.account_book.get_account(&pk_to_hash(&faucet_pk)));
+                                // println!("L1Node rollup account {:?}", self.engine_data.account_book.get_account(&pk_to_hash(&rollup_pk)));
                             }
                         }
                         Err(e) => {
