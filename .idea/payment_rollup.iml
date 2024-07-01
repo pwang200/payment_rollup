@@ -12,6 +12,7 @@
       <sourceFolder url="file://$MODULE_DIR$/perf/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/methods/guest/target" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
+      <excludeFolder url="file://$MODULE_DIR$/common/target" />
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />

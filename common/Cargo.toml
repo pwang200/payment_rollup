@@ -13,7 +13,7 @@ serde = { version = "1.0", features = ["derive"] }
 #monotree = { git = "https://github.com/pwang200/monotree.git" }
 partial_binary_merkle = { git = "https://github.com/pwang200/partial_binary_merkle.git", branch = "optim_a4_bt_rs" }
 #rev = "c2c2b97"
-k256 = { version = "0.13.3", features = ["pem", "serde"] }
+k256 = { version = "0.13.1", default-features = false, features = ["arithmetic", "serde", "expose-field", "std", "ecdsa", "pem"] }
 
 [dependencies.sha2]
 git = "https://github.com/risc0/RustCrypto-hashes"
