@@ -53,8 +53,10 @@ fn main() {
         .unwrap();
     let prover = default_prover();
     let receipt = prover.prove(env, PAYMENT_L2_ELF).unwrap();
+    let proof_size = receipt.inner.composite().unwrap().segments.iter().fold(0, |acc, segment| acc + segment.get_seal_bytes().len());
+
     let time = clock() - time_start;
-    println!("Prover, prove time {}", time / 1000);
+    println!("Prover, prove time {}, prove size {}", time / 1000, proof_size);
     receipt.verify(PAYMENT_L2_ID).expect("proof verification failed");
     let header: BlockHeaderL2 = receipt.journal.decode().unwrap();
     println!("Prover, header hash: {:?}", header.hash());
