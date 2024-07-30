@@ -55,12 +55,17 @@ fn main() {
     let receipt = prover.prove(env, PAYMENT_L2_ELF).unwrap();
     let proof_size = receipt.inner.composite().unwrap().segments.iter().fold(0, |acc, segment| acc + segment.get_seal_bytes().len());
 
-    let time = clock() - time_start;
-    println!("Prover, prove time {}, prove size {}", time / 1000, proof_size);
+    let prove_time = clock() - time_start;
+    let time_start = clock();
     receipt.verify(PAYMENT_L2_ID).expect("proof verification failed");
-    let header: BlockHeaderL2 = receipt.journal.decode().unwrap();
-    println!("Prover, header hash: {:?}", header.hash());
+    let verify_time = clock() - time_start;
+    println!("Prover, prove time {} seconds, proof size {}, verify time {} milliseconds",
+             prove_time / 1000, proof_size, verify_time);
 
+    let header: BlockHeaderL2 = receipt.journal.decode().unwrap();
     let host_header = common::l2_engine::process(&mut input).expect("native run");
-    println!("Host,   header hash: {:?}", host_header.hash());
+    if host_header.hash() != header.hash() {
+        println!("Prover, header hash: {:?}", header.hash());
+        println!("Host,   header hash: {:?}", host_header.hash());
+    }
 }
